@@ -1,0 +1,3 @@
+# PyMud
+
+PyMud is a Multi-threaded MUD server written in Python. The goal is to have a mud server capable of supporting a procedurally generated, infinite universe for the game SolarWinds. This will include 2D (planet surface) and 3D (space) environments. Present state of the engine is non-function, in the very beginning stages. Multiple attempts have been made at SolarWinds with different engines and all have run into inherent limitations that ultimately required the creation of PyMud. A single-threaded version was in it's infancy when the need for multiple threads was recognized and this iteration of the project started.
