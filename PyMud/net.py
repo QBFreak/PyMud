@@ -43,10 +43,6 @@ class Network(multiqueue.MultiQueue, threading.Thread):
                 else:
                     # Whaaat? I don't know how to do that
                     self.console("WARNING: Unknown command issued to Network: " + str(cmd))
-            # Pass on console messages from clients
-            for c in self.clients:
-                while c.hasqueued('console'):
-                    self.console(c.get_nowait('console'), newline=False)
             # Accept sockets
             try:
                 (clientsocket, address) = self.socket.accept()
