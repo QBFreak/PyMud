@@ -2,7 +2,7 @@
 """
     PyMud/net.py - PyMud networking code
 """
-import multiqueue, socket, threading, time
+import client, multiqueue, socket, threading, time
 
 class Network(multiqueue.MultiQueue, threading.Thread):
     def __init__(self, port=32767):
@@ -14,11 +14,11 @@ class Network(multiqueue.MultiQueue, threading.Thread):
         self.socket.bind(('localhost', int(port)))
         self.socket.setblocking(False)
         self.socket.listen(5)
-        self.clients = {}
+        self.clients = []
 
-    def console(self, msg):
+    def console(self, msg, newline=True):
         "Enqueue a message for console output"
-        self.enqueue('console', str(msg))
+        self.enqueue('console', str(msg), newline=newline)
 
     def shutdown(self):
         "Enqueue the shutdown command in the command queue"
@@ -43,12 +43,16 @@ class Network(multiqueue.MultiQueue, threading.Thread):
                 else:
                     # Whaaat? I don't know how to do that
                     self.console("WARNING: Unknown command issued to Network: " + str(cmd))
+            # Pass on console messages from clients
+            for c in self.clients:
+                while c.hasqueued('console'):
+                    self.console(c.get_nowait('console'), newline=False)
             # Accept sockets
             try:
                 (clientsocket, address) = self.socket.accept()
-                self.console("Accepted connection from " + str(address))
-                clientsocket.shutdown(0)
-                clientsocket.close()
+                clientthread = client.Client(clientsocket, address)
+                clientthread.run()
+                self.clients.append(clientthread)
             except socket.error, err:
                 # [Errno 11] Resource temporarily unavailable
                 #  That is to say, no error and no connection to accept
