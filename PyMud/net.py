@@ -2,13 +2,19 @@
 """
     PyMud/net.py - PyMud networking code
 """
-import multiqueue, threading, time
+import multiqueue, socket, threading, time
 
 class Network(multiqueue.MultiQueue, threading.Thread):
     def __init__(self, port=32767):
         multiqueue.MultiQueue.__init__(self,('console', 'control'), 'console')
         threading.Thread.__init__(self)
         self.port = port
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.socket.bind(('localhost', int(port)))
+        self.socket.setblocking(False)
+        self.socket.listen(5)
+        self.clients = {}
 
     def console(self, msg):
         "Enqueue a message for console output"
@@ -37,3 +43,14 @@ class Network(multiqueue.MultiQueue, threading.Thread):
                 else:
                     # Whaaat? I don't know how to do that
                     self.console("WARNING: Unknown command issued to Network: " + str(cmd))
+            # Accept sockets
+            try:
+                (clientsocket, address) = self.socket.accept()
+                self.console("Accepted connection from " + str(address))
+                clientsocket.shutdown(0)
+                clientsocket.close()
+            except socket.error, err:
+                # [Errno 11] Resource temporarily unavailable
+                #  That is to say, no error and no connection to accept
+                if err.errno != 11:
+                    self.console("NETWORK: " + str(err))
