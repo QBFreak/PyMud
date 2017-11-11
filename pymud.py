@@ -19,4 +19,6 @@ while net.is_alive():
         while net.hasqueued('console'):
             sys.stdout.write(net.get_nowait('console'))
     except KeyboardInterrupt:
-        print("You want to shut down")
+        # print("You want to shut down")
+        print("")
+        net.shutdown()
