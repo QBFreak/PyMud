@@ -6,12 +6,17 @@
 import sqlite3
 
 class Database:
-    def __init__(self, dbfile = ""):
+    def __init__(self, dbfile = "", initdb=True):
         if dbfile == "":
             dbfile = "pymud.db"
         self.file = dbfile
         self.conn = sqlite3.connect(dbfile)
         self.c = self.conn.cursor()
+        if initdb:
+            try:
+                dbver = self.read_config("DATABASE_VERSION")
+            except sqlite3.OperationalError:
+                self.initdb()
 
     def shutdown(self):
         """
