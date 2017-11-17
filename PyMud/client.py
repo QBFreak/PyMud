@@ -5,11 +5,12 @@
 import multiqueue, socket, threading, time
 
 class Client(multiqueue.MultiQueue, threading.Thread):
-    def __init__(self, socket, address):
+    def __init__(self, socket, address, db):
         multiqueue.MultiQueue.__init__(self,('console', 'control'), 'console')
         threading.Thread.__init__(self)
         self.socket = socket
         self.address, self.port = address
+        self.db = db
 
     def console(self, msg):
         "Enqueue a message for console output"
@@ -19,11 +20,19 @@ class Client(multiqueue.MultiQueue, threading.Thread):
         "Enqueue the shutdown command in the command queue"
         self.enqueue('control', "shutdown", newline=False)
 
+    def send(self, msg, newline=True):
+        "Send a message to the socket"
+        self.socket.send(str(msg))
+        if newline:
+            self.socket.send("\n")
+
     def run(self):
         """
         Client main thread
         """
-        self.console("New client launched from " + str(self.address) + ":" + str(self.port))
+        self.console("New client connected from " + str(self.address) + ":" + str(self.port))
+        self.send("TESTING")
+        self.send("Database version: " + str(self.db.read_config("DATABASE_VERSION")))
         while True:
             # Don't max out the processor with our main loop
             time.sleep(0.1)
@@ -40,4 +49,5 @@ class Client(multiqueue.MultiQueue, threading.Thread):
                 else:
                     # Whaaat? I don't know how to do that
                     self.console("WARNING: Unknown command issued to Client: " + str(cmd))
+            # TESTING, Shut it down
             self.shutdown()

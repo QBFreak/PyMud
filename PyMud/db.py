@@ -3,10 +3,13 @@
     PyMud/db.py - PyMud database handler
 """
 
-import sqlite3
+import cPickle as Pickle, multiqueue, sqlite3, threading, time
 
-class Database:
+class Database(multiqueue.MultiQueue, threading.Thread):
     def __init__(self, dbfile = "", initdb=True):
+        multiqueue.MultiQueue.__init__(self,('console', 'control', 'database', 'results'), 'console')
+        threading.Thread.__init__(self)
+        self.started = False
         if dbfile == "":
             dbfile = "pymud.db"
         self.file = dbfile
@@ -14,53 +17,60 @@ class Database:
         self.c = self.conn.cursor()
         if initdb:
             try:
-                dbver = self.read_config("DATABASE_VERSION")
+                dbver = self._read_config("DATABASE_VERSION")
             except sqlite3.OperationalError:
                 self.initdb()
+        # Close the connection so we can reopen it as the thread
+        self.conn.close()
+
+    def console(self, msg):
+        "Enqueue a message for console output"
+        self.enqueue('console', str(msg))
 
     def shutdown(self):
+        """
+        Tell the database thread it's time to shutdown
+        """
+        self.enqueue('control', "shutdown", newline=False)
+
+    def do_shutdown(self):
         """
         Prepare the database for game shutdown
         """
         # self.conn.commit() # Do we really want to do this here?
         self.conn.close()
 
-    def fetchall(self, query):
-        """
-        Return results of query, wrapper for sqlite3 cursor.fetchall
-        """
-        self.c.execute(query)
-        return self.c.fetchall()
-
-    def execute(self, query):
-        """
-        Execute a query, wrapper for sqlite3 cursor.execute, followed up with
-            a connection.commit
-        """
-        self.c.execute(query)
-        self.conn.commit()
-
     def write_config(self, name, value):
         """
         Write a config value to the database
+          This is thread-safe
         """
         if not str(name):
             raise ValueError("name must be a valid string: " + str(name))
-        self.execute("INSERT INTO config VALUES (\'" + str(name) + "\', \'" + str(value) + "\')")
+        self.enqueue('database', Pickle.dumps(('write_config', (name, value))))
 
     def read_config(self, name):
         """
         Read a config value from the database
+          This is thread-safe
         """
         if not str(name):
             raise ValueError("name must be a valid string: " + str(name))
-        res = self.fetchall("SELECT value FROM config WHERE name=\'" + str(name) + "\'")
-        # Return the first record [0], first field [0]
-        return res[0][0]
+        self.enqueue('database', Pickle.dumps(('read_config', str(name))))
+        # Wait for results
+        while self.hasqueued('results') == False:
+            time.sleep(0.1)
+        return Pickle.loads(self.get_nowait('results'))
 
     def initdb(self):
         """
         Initialize the database with default values
+          ONLY CALL FROM __init__()
+
+        TODO:
+          Thread-safe
+          Only create tables if they don't exist
+          Only populate tables if empty
         """
         # Config
         dbver = 0.1
@@ -80,3 +90,67 @@ class Database:
         self.execute("CREATE TABLE channels (id int, name text, color text)")
         self.execute("INSERT INTO channels VALUES (0, 'public', 1)")
         return dbver
+
+    def _fetchall(self, query):
+        """
+        Return results of query, wrapper for sqlite3 cursor.fetchall
+        """
+        self.c.execute(query)
+        return self.c.fetchall()
+
+    def _execute(self, query):
+        """
+        Execute a query, wrapper for sqlite3 cursor.execute, followed up with
+            a connection.commit
+        """
+        self.c.execute(query)
+        self.conn.commit()
+
+    def _read_config(self, name):
+        """
+        Read a config value from the database
+          This is only meant to be called by the database thread
+        """
+        res = self._fetchall("SELECT value FROM config WHERE name=\'" + str(name) + "\'")
+        # Return the first record [0], first field [0]
+        return res[0][0]
+
+    def _write_config(self, name, value):
+        """
+        Write a config value to the database
+        """
+        self._execute("INSERT INTO config VALUES (\'" + str(name) + "\', \'" + str(value) + "\')")
+
+    def run(self):
+        """
+        Database main thread
+        """
+        self.started = False
+        self.console("Database started")
+        self.conn = sqlite3.connect(self.file)
+        self.c = self.conn.cursor()
+        self.started = True
+        while True:
+            # Don't max out the processor with our main loop
+            time.sleep(0.1)
+            # Check the control queue for commands
+            while self.hasqueued('control'):
+                cmd = self.get_nowait('control')
+                if cmd == 'shutdown':
+                    # Shut down the network thread
+                    self.do_shutdown()
+                    self.console("Database stopped")
+                    return
+                else:
+                    # Whaaat? I don't know how to do that
+                    self.console("WARNING: Unknown 'command' issued to Database: " + str(cmd))
+            # Check the database queue
+            while self.hasqueued('database'):
+                cmd, val = Pickle.loads(self.get_nowait('database'))
+                if cmd == 'read_config':
+                    self.enqueue('results', Pickle.dumps(self._read_config(val)))
+                elif cmd == 'write_config':
+                    name, val = val
+                    self._write_config(name, val)
+                else:
+                    self.console("WARNING: Unknown 'database' command: " + str(cmd))

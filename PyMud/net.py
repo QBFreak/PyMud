@@ -5,9 +5,10 @@
 import client, multiqueue, socket, threading, time
 
 class Network(multiqueue.MultiQueue, threading.Thread):
-    def __init__(self, port=32767):
+    def __init__(self, db, port=32767):
         multiqueue.MultiQueue.__init__(self,('console', 'control'), 'console')
         threading.Thread.__init__(self)
+        self.db = db
         self.port = port
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -46,7 +47,7 @@ class Network(multiqueue.MultiQueue, threading.Thread):
             # Accept sockets
             try:
                 (clientsocket, address) = self.socket.accept()
-                clientthread = client.Client(clientsocket, address)
+                clientthread = client.Client(clientsocket, address, self.db)
                 clientthread.run()
                 self.clients.append(clientthread)
             except socket.error, err:
