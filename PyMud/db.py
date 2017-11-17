@@ -62,6 +62,17 @@ class Database(multiqueue.MultiQueue, threading.Thread):
             time.sleep(0.1)
         return Pickle.loads(self.get_nowait('results'))
 
+    def player_count(self):
+        """
+        Return a count of the players in the database
+          This is thread-safe
+        """
+        self.enqueue('database', Pickle.dumps(('player_count', '')))
+        # Wait for results
+        while self.hasqueued('results') == False:
+            time.sleep(0.1)
+        return Pickle.loads(self.get_nowait('results'))
+
     def initdb(self):
         """
         Initialize the database with default values
@@ -118,8 +129,18 @@ class Database(multiqueue.MultiQueue, threading.Thread):
     def _write_config(self, name, value):
         """
         Write a config value to the database
+          This is only meant to be called by the database thread
         """
         self._execute("INSERT INTO config VALUES (\'" + str(name) + "\', \'" + str(value) + "\')")
+
+    def _player_count(self):
+        """
+        Return a count of the players in the database
+          This is only meant to be called by the database thread
+        """
+        res = self._fetchall("SELECT COUNT(*) FROM players")
+        # Return the first record [0], first field [0]
+        return [0][0]
 
     def run(self):
         """
@@ -143,7 +164,7 @@ class Database(multiqueue.MultiQueue, threading.Thread):
                     return
                 else:
                     # Whaaat? I don't know how to do that
-                    self.console("WARNING: Unknown 'command' issued to Database: " + str(cmd))
+                    self.console("WARNING: Unknown control issued to Database: " + str(cmd))
             # Check the database queue
             while self.hasqueued('database'):
                 cmd, val = Pickle.loads(self.get_nowait('database'))
@@ -152,5 +173,7 @@ class Database(multiqueue.MultiQueue, threading.Thread):
                 elif cmd == 'write_config':
                     name, val = val
                     self._write_config(name, val)
+                elif cmd == 'player_count':
+                    self.enqueue('results', Pickle.dumps(self._player_count()))
                 else:
                     self.console("WARNING: Unknown 'database' command: " + str(cmd))

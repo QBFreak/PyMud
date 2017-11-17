@@ -33,6 +33,7 @@ class Client(multiqueue.MultiQueue, threading.Thread):
         self.console("New client connected from " + str(self.address) + ":" + str(self.port))
         self.send("TESTING")
         self.send("Database version: " + str(self.db.read_config("DATABASE_VERSION")))
+        self.send("Player Count:     " + str(self.db.player_count()))
         while True:
             # Don't max out the processor with our main loop
             time.sleep(0.1)
