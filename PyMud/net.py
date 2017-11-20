@@ -38,7 +38,11 @@ class Network(multiqueue.MultiQueue, threading.Thread):
                 cmd = self.get_nowait('control')
                 if cmd == 'shutdown':
                     # Shut down the network thread
-                    self.console('Shutting down')
+                    self.console('Shutting down client threads')
+                    for c in self.clients:
+                        c.shutdown()
+                        while c.status != "SHUTDOWN":
+                            time.sleep(0.1)
                     self.console("Networking stopped")
                     return
                 else:
@@ -48,7 +52,7 @@ class Network(multiqueue.MultiQueue, threading.Thread):
             try:
                 (clientsocket, address) = self.socket.accept()
                 clientthread = client.Client(clientsocket, address, self.db)
-                clientthread.run()
+                clientthread.start()
                 self.clients.append(clientthread)
             except socket.error, err:
                 # [Errno 11] Resource temporarily unavailable
