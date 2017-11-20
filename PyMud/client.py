@@ -12,6 +12,7 @@ class Client(multiqueue.MultiQueue, threading.Thread):
         self.socket = socket
         self.address, self.port = address
         self.db = db
+        self.socket.setblocking(False)
 
     def console(self, msg, newline=True, prefix=True):
         "Enqueue a message for console output"
@@ -37,7 +38,7 @@ class Client(multiqueue.MultiQueue, threading.Thread):
 
     def createPlayer(self):
         "Prompt the connected user to create a new player"
-        self.console(str(self.address) + ":" + str(self.port) + " new player creation")
+        self.console("New player creation")
         self.send("No players in the database.")
         if str(self.address) != "127.0.0.1":
             self.send("Please connect from localhost to create the admin player.")
@@ -58,27 +59,44 @@ class Client(multiqueue.MultiQueue, threading.Thread):
         Client main thread
         """
         self.status = "RUNNING"
-        self.console("New client connected from " + str(self.address) + ":" + str(self.port))
+        self.console("New client connected")
         self.send("Welcome to PyMud")
-        # self.send("Database version: " + str(self.db.read_config("DATABASE_VERSION")))
-        # self.send("Player Count:     " + str(self.db.player_count()))
-        # pc = self.db.player_count()
-        # if pc == 0:
-        #     # We need to create a player!
-        #     self.createPlayer()
-        # else:
-        #     # Log the player in
-        #     self.login()
+        pc = self.db.player_count()
+        if pc == 0:
+            # We need to create a player!
+            self.createPlayer()
+        else:
+            # Log the player in
+            self.login()
         while True:
             # Don't max out the processor with our main loop
             time.sleep(0.1)
             # Check for user input
-            # self.console("#", newline=False)
-            # data = self.socket.recv(32)
-            # self.console("-", newline=False)
-            # if data:
-            #     self.enqueue('recv', data)
-            #     self.console("DEBUG: Recv: " + str(data))
+            data = None
+            ###
+            # So this bit here where we read the socket is ugly. Because sockets are ugly.
+            #  First, if the socket is closed, the .recv() will return nothing
+            #  Second, if the socket is normal with nothing to read, it will raise an exception
+            #   Oh, but not just any exception, we have to check that e.errno is 11 to be sure
+            # Please feel free to email me about discount rates on rubber rooms
+            ###
+            try:
+                data = self.socket.recv(8192) # 8k
+                # Don't move this check down below with the if data:
+                #  It breaks down there (always returns no data)
+                if not data:
+                    self.console("Socket closed")
+                    self.shutdown()
+            except socket.error, e:
+                if e.errno == 11:
+                    pass
+                else:
+                    self.console("Error reading from socket: " + str(e))
+            if data:
+                # Lets get rid of the newline characters on the end
+                data = data.rstrip("\r\n")
+                self.enqueue('recv', data)
+                self.console("DEBUG: Recv: " + str(data))
             # Check the control queue for commands
             while self.hasqueued('control'):
                 cmd = self.get_nowait('control')
@@ -92,5 +110,3 @@ class Client(multiqueue.MultiQueue, threading.Thread):
                 else:
                     # Whaaat? I don't know how to do that
                     self.console("WARNING: Unknown control issued to Client: " + str(cmd))
-            # TESTING, Shut it down
-            # self.shutdown()
