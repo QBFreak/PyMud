@@ -15,6 +15,7 @@ class Network(multiqueue.MultiQueue, threading.Thread):
         self.socket.bind(('localhost', int(port)))
         self.socket.setblocking(False)
         self.socket.listen(5)
+        self.game = None
         self.clients = []
 
     def console(self, msg, newline=True):
@@ -51,7 +52,7 @@ class Network(multiqueue.MultiQueue, threading.Thread):
             # Accept sockets
             try:
                 (clientsocket, address) = self.socket.accept()
-                clientthread = client.Client(clientsocket, address, self.db)
+                clientthread = client.Client(clientsocket, address, self.db, self.game)
                 clientthread.start()
                 self.clients.append(clientthread)
             except socket.error, err:

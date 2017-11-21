@@ -17,6 +17,7 @@ portNum = db.read_config("MUD_PORT")
 
 net = PyMud.net.Network(db, port=portNum)
 game = PyMud.game.Game(net, db)
+net.game = game
 
 net.start()
 game.start()
