@@ -3,7 +3,7 @@
     pymud.py - PyMud main file
 """
 import Queue, sys, time
-import PyMud.db, PyMud.net
+import PyMud.db, PyMud.net, PyMud.game
 
 print("== PyMud server ==")
 
@@ -16,24 +16,33 @@ while not db.started:
 portNum = db.read_config("MUD_PORT")
 
 net = PyMud.net.Network(db, port=portNum)
+game = PyMud.game.Game(net, db)
 
 net.start()
-while net.is_alive() or db.is_alive():
+game.start()
+
+threads = [db, net, game]
+
+# Set is_alive flag for thread(s)
+is_alive = False
+for thread in threads:
+    if thread.is_alive():
+        is_alive = True
+        break
+
+while is_alive:
     try:
+        # Don't let the loop eat the processor
         time.sleep(0.1)
-        # Check for console messages from the Database object
-        while db.hasqueued('console'):
-            try:
-                sys.stdout.write(db.get_nowait('console'))
-            except Queue.Empty:
-                pass
-        # Check for console messages from the Network object
-        while net.hasqueued('console'):
-            try:
-                sys.stdout.write(net.get_nowait('console'))
-            except Queue.Empty:
-                pass
-        # Check for console messages from the Client objects
+        # Check for console messages from the the threads
+        for thread in threads:
+            while thread.hasqueued('console'):
+                try:
+                    sys.stdout.write(thread.get_nowait('console'))
+                except Queue.empty:
+                    pass
+
+        # Check for console messages from the client threads
         for c in net.clients:
             while c.hasqueued('console'):
                 try:
@@ -44,5 +53,14 @@ while net.is_alive() or db.is_alive():
     except KeyboardInterrupt:
         # print("You want to shut down")
         print("")
-        net.shutdown()
-        db.shutdown()
+        for thread in threads:
+            if thread.is_alive():
+                thread.shutdown()
+        # net.shutdown()
+        # db.shutdown()
+    # Set is_alive flag for thread(s)
+    is_alive = False
+    for thread in threads:
+        if thread.is_alive():
+            is_alive = True
+            break

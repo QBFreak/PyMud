@@ -36,24 +36,6 @@ class Client(multiqueue.MultiQueue, threading.Thread):
             else:
                 self.console("Error sending " + str(e))
 
-    def createPlayer(self):
-        "Prompt the connected user to create a new player"
-        self.console("New player creation")
-        self.send("No players in the database.")
-        if str(self.address) != "127.0.0.1":
-            self.send("Please connect from localhost to create the admin player.")
-            self.shutdown()
-            return
-        self.send("Admin player creation")
-        self.send("")
-        self.send("Please enter a player name: ", newline=False)
-
-
-    def login(self):
-        "Prompt the connected user to log in as an existing player"
-        self.console(str(self.address) + ":" + str(self.port) + " login")
-        self.send("LOGIN")
-
     def run(self):
         """
         Client main thread
@@ -62,12 +44,12 @@ class Client(multiqueue.MultiQueue, threading.Thread):
         self.console("New client connected")
         self.send("Welcome to PyMud")
         pc = self.db.player_count()
-        if pc == 0:
-            # We need to create a player!
-            self.createPlayer()
-        else:
-            # Log the player in
-            self.login()
+        # if pc == 0:
+        #     # We need to create a player!
+        #     self.createPlayer()
+        # else:
+        #     # Log the player in
+        #     self.login()
         while True:
             # Don't max out the processor with our main loop
             time.sleep(0.1)
