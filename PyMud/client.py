@@ -6,7 +6,7 @@ import multiqueue, socket, threading, time
 
 class Client(multiqueue.MultiQueue, threading.Thread):
     def __init__(self, socket, address, db):
-        multiqueue.MultiQueue.__init__(self,('console', 'control', 'recv'), 'console')
+        multiqueue.MultiQueue.__init__(self,('console', 'control', 'recv', 'send'), 'console')
         threading.Thread.__init__(self)
         self.status = "INIT"
         self.socket = socket
