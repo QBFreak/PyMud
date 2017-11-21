@@ -61,7 +61,6 @@ class Client(multiqueue.MultiQueue, threading.Thread):
         self.status = "RUNNING"
         self.console("New client connected")
         self.game.connect(self)
-        self.send("Welcome to PyMud")
         pc = self.db.player_count()
         # if pc == 0:
         #     # We need to create a player!
@@ -106,6 +105,7 @@ class Client(multiqueue.MultiQueue, threading.Thread):
                     self.socket.shutdown(socket.SHUT_RDWR)
                     self.socket.close()
                     self.console("Client stopped")
+                    self.game.disconnect(self)
                     self.status = "SHUTDOWN"
                     return
                 else:
