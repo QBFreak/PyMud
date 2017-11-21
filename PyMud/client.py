@@ -14,31 +14,48 @@ class Client(multiqueue.MultiQueue, threading.Thread):
         self.db = db
         self.socket.setblocking(False)
 
-    def console(self, msg, newline=True, prefix=True):
-        "Enqueue a message for console output"
-        if prefix:
-            msg = "[" + str(self.address) + ":" + str(self.port) + "]: " + str(msg)
-        self.enqueue('console', str(msg), newline=newline)
-
-    def shutdown(self):
-        "Enqueue the shutdown command in the command queue"
-        self.enqueue('control', "shutdown", newline=False)
-
-    def send(self, msg, newline=True):
-        "Send a message to the socket"
+    def _send(self, msg):
+        """
+            Send a message to the socket
+              Internal use - NOT thread-safe
+              Threads should make use of Client.send(msg, [newline])
+        """
         try:
             self.socket.send(str(msg))
-            if newline:
-                self.socket.send("\n")
         except socket.error, e:
             if e.errno == 32:
                 self.console("Broken pipe!")
             else:
                 self.console("Error sending " + str(e))
 
+    def console(self, msg, newline=True, prefix=True):
+        """
+            Enqueue a message for console output
+              This is thread-safe
+        """
+        if prefix:
+            msg = "[" + str(self.address) + ":" + str(self.port) + "]: " + str(msg)
+        self.enqueue('console', str(msg), newline=newline)
+
+    def shutdown(self):
+        """
+            Enqueue the shutdown command in the command queue
+              This is thread-safe
+        """
+        self.enqueue('control', "shutdown", newline=False)
+
+    def send(self, msg, newline=True):
+        """
+            Send a message to the client
+              This is thread-safe
+        """
+        if newline:
+            msg = str(msg) + "\n"
+        self.enqueue('send', msg)
+
     def run(self):
         """
-        Client main thread
+            Client main thread
         """
         self.status = "RUNNING"
         self.console("New client connected")
@@ -92,3 +109,6 @@ class Client(multiqueue.MultiQueue, threading.Thread):
                 else:
                     # Whaaat? I don't know how to do that
                     self.console("WARNING: Unknown control issued to Client: " + str(cmd))
+            # Check the send queue for output
+            while self.hasqueued('send'):
+                self._send(self.get_nowait('send'))
