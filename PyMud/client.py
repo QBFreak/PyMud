@@ -14,6 +14,9 @@ class Client(multiqueue.MultiQueue, threading.Thread):
         self.db = db
         self.game = game
         self.socket.setblocking(False)
+        self.currentPrompt = None
+        self.bitBucket = {}
+        self.bucketLock = threading.Lock()
 
     def _send(self, msg):
         """
@@ -50,9 +53,7 @@ class Client(multiqueue.MultiQueue, threading.Thread):
             Send a message to the client
               This is thread-safe
         """
-        if newline:
-            msg = str(msg) + "\n"
-        self.enqueue('send', msg)
+        self.enqueue('send', msg, newline=newline)
 
     def run(self):
         """
@@ -61,13 +62,6 @@ class Client(multiqueue.MultiQueue, threading.Thread):
         self.status = "RUNNING"
         self.console("New client connected")
         self.game.connect(self)
-        pc = self.db.player_count()
-        # if pc == 0:
-        #     # We need to create a player!
-        #     self.createPlayer()
-        # else:
-        #     # Log the player in
-        #     self.login()
         while True:
             # Don't max out the processor with our main loop
             time.sleep(0.1)
@@ -96,7 +90,8 @@ class Client(multiqueue.MultiQueue, threading.Thread):
                 # Lets get rid of the newline characters on the end
                 data = data.rstrip("\r\n")
                 self.enqueue('recv', data)
-                self.console("DEBUG: Recv: " + str(data))
+                #self.console("DEBUG: Recv: " + str(data))
+                self.game.receive(self, data)
             # Check the control queue for commands
             while self.hasqueued('control'):
                 cmd = self.get_nowait('control')

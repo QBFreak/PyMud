@@ -5,7 +5,7 @@
 import cPickle as Pickle, multiqueue, threading, time
 
 class Game(multiqueue.MultiQueue, threading.Thread):
-    def __init__(self, db, net):
+    def __init__(self, net, db):
         multiqueue.MultiQueue.__init__(self,('console', 'control', 'client'), 'console')
         threading.Thread.__init__(self)
         self.db = db
@@ -15,8 +15,6 @@ class Game(multiqueue.MultiQueue, threading.Thread):
         self.clientNum = 0
         self.clientList = {}
 
-        # Errrr. This needs to be multi-socket, not single...
-        self.currentPrompt = None
         self.newUserPrompts = {
             'promptorder':('username', 'password'),
             'username':str(),
@@ -44,6 +42,9 @@ class Game(multiqueue.MultiQueue, threading.Thread):
             msg = "[" + str(self.clientList[client].address) + ":" + str(self.clientList[client].port) + "]: " + str(msg)
         self.enqueue('console', str(msg), newline=newline)
 
+    def send(self, clientnum, msg, newline=True):
+        self.clientList[clientnum].send(msg, newline=newline)
+
     def shutdown(self):
         """
             Notify Game that it needs to shutdown
@@ -68,45 +69,78 @@ class Game(multiqueue.MultiQueue, threading.Thread):
               This is thread-safe
         """
         self.clientLock.acquire()
-        # if client in self.clientList:
         cnum = self.clientList.keys()[self.clientList.values().index(client)]
         del self.clientList[cnum]
         self.enqueue('client', Pickle.dumps(('CLOSED', cnum)), newline=False)
         self.clientLock.release()
 
-    def createPlayer(self, userInput=None):
+    def receive(self, client, data):
+        """
+            Notify Game that a client has received a line from the player
+              This is thread-safe
+        """
+        # Use the lock to make sure nothing shifts around on us
+        self.clientLock.acquire()
+        cnum = self.clientList.keys()[self.clientList.values().index(client)]
+        self.clientLock.release()
+        self.enqueue('client', Pickle.dumps(('RECV', (cnum, data))), newline=False)
+
+    def createPlayer(self, clientnum, userInput=None, firstUser=False):
         """
             Prompt the connected user to create a new player
              Also handles subsequent input required to complete process
         """
+        client = self.clientList[clientnum]
         if userInput == None:
-            self.console("New player creation")
-            self.send("No players in the database.")
-            if str(self.address) != "127.0.0.1":
-                self.send("Please connect from localhost to create the admin player.")
-                self.shutdown()
-                return
-            self.send("Admin player creation")
-            self.send("")
-            self.send("Please enter a player name: ", newline=False)
-            self.currentPrompt = 'username'
+            # Called for the first time, set it up
+            client.status = "NEWPLAYER"
+            self.console("New player creation", client=clientnum)
+            if firstUser:
+                # Looks like this is the first user in the database
+                self.send(clientnum, "No players in the database.")
+                # You really have to be local to create the first player, sorry!
+                if str(client.address) != "127.0.0.1":
+                    self.send(clientnum, "Please connect from localhost to create the admin player.")
+                    client.shutdown()
+                    return
+                self.send(clientnum, "Admin player creation")
+            # Back to normal (any) player creation
+            self.send(clientnum, "")
+            self.send(clientnum, "Please enter a player name: ", newline=False)
+            # We're prompting for the username
+            client.currentPrompt = 'username'
         else:
-            if checkInput(self.currentPrompt, userInput, self.newUserPrompts):
-                if self.currentPrompt == 'username':
-                    self.currentPrompt = 'password'
-                    self.send("Please select a password: ", newline=False)
+            if self.checkInput(client.currentPrompt, userInput, self.newUserPrompts):
+                if client.currentPrompt == 'username':
+                    # Record the username
+                    client.bucketLock.acquire()
+                    client.bitBucket['username'] = userInput
+                    client.bucketLock.release()
+                    # Next we need to prompt for a password
+                    client.currentPrompt = 'password'
+                    self.send(clientnum, "Please select a password: ", newline=False)
+                elif client.currentPrompt == 'password':
+                    # Record the password
+                    client.bucketLock.acquire()
+                    client.bitBucket['password'] = userInput
+                    client.bucketLock.release()
+                    # No more prompts
+                    client.currentPrompt = ''
+                    self.send(clientnum, "User creation completed.")
+                    client.status = "GAME"
+                    self.send(clientnum, "DEBUG: Your username is " + str(client.bitBucket['username']) + ", and your password is " + str(client.bitBucket['password']))
                 else:
-                    self.send("Error creating new player!")
-                    self.currentPrompt = ""
+                    # Blork (they want us to do WHAT now?)
+                    self.send(clientnum, "Error creating new player!")
+                    client.currentPrompt = ""
             else:
-                self.send("Invalid value, please try again.")
+                # User input didn't pass validation
+                self.send(clientnum, "Invalid value, please try again.")
 
     def login(self):
         "Prompt the connected user to log in as an existing player"
-        ### TODO: DO NOT USE!
-        foo = foo
-        # self.console(str(self.address) + ":" + str(self.port) + " login")
-        # self.send("LOGIN")
+        self.console("login", client=clientnum)
+        self.send(clientnum, "LOGIN")
 
     def run(self):
         """
@@ -132,7 +166,19 @@ class Game(multiqueue.MultiQueue, threading.Thread):
                 status, params = Pickle.loads(self.get_nowait('client'))
                 if status == "NEW":
                     self.console("Client " + str(params) + " connected to game", client=params)
+                    pc = self.db.player_count()
+                    if pc == 0:
+                        # We need to create a player!
+                        self.createPlayer(params, firstUser=True)
+                    else:
+                        # Log the player in
+                        self.login(params)
                 elif status == "CLOSED":
                     self.console("Client " + str(params) + " disconnected from game")
+                elif status == "RECV":
+                    cnum, data = params
+                    self.console("RECV: " + str(data), client=cnum)
+                    if self.clientList[cnum].status == "NEWPLAYER":
+                        self.createPlayer(cnum, data)
                 else:
                     self.console("Game: I don't know what to do with client status " + str(status))
