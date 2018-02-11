@@ -119,7 +119,7 @@ class Database(multiqueue.MultiQueue, threading.Thread):
         # Populate minimum default values if needed
         if not self._read_config('DATABASE_VERSION'):
             self.write_config("DATABASE_VERSION", dbver)
-        if not self._read_config('MUD_PORT')
+        if not self._read_config('MUD_PORT'):
             self.write_config("MUD_PORT", 32767)
         # Rooms
         self.execute("CREATE TABLE IF NOT EXISTS rooms (id int, name text, color text, desc text)")
