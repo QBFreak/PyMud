@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 """
     pymud.py - PyMud main file
 
@@ -6,7 +6,7 @@
         OpenSimplex (some day...)
         passlib
 """
-import Queue, sys, time
+import queue, sys, time
 import PyMud.db, PyMud.net, PyMud.game
 
 print("== PyMud server ==")

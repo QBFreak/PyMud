@@ -9,18 +9,31 @@
         string: queues=('console') results in seven queues; c, o, n, s, o, l, e
 """
 
-import Queue
+import queue
 
 class MultiQueue:
     def __init__(self, queues=(), defqueue=''):
         self.queues = {}
         for q in queues:
-            self.queues[q] = Queue.Queue()
+            self.queues[q] = queue.Queue()
         if len(queues) and defqueue == '':
             defqueue = queues[0]
         self.defqueue = defqueue
 
-    def enqueue(self, queue, data, newline=True):
+    def enqueue(self, queue, data):
+        if queue == "":
+            queue = self.defqueue
+        if queue == "":
+            raise ValueError("There are no queues defined")
+        if not data:
+            # raise ValueError("Nothing to add to queue")
+            data = ""
+        if queue in self.queues:
+            self.queues[queue].put(data)
+            return True
+        raise KeyError(queue + " is an invalid queue name")
+
+    def enqueueString(self, queue, data, newline=True):
         if queue == "":
             queue = self.defqueue
         if queue == "":

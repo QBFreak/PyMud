@@ -3,12 +3,12 @@
     PyMud/db.py - PyMud database handler
 """
 
-import cPickle as Pickle, multiqueue, object, random, sqlite3, threading, time
+import pickle, PyMud.multiqueue, PyMud.object, random, sqlite3, threading, time
 from passlib.hash import pbkdf2_sha256
 
-class Database(multiqueue.MultiQueue, threading.Thread):
+class Database(PyMud.multiqueue.MultiQueue, threading.Thread):
     def __init__(self, dbfile = "", initdb=True):
-        multiqueue.MultiQueue.__init__(self,('console', 'control', 'database', 'results'), 'console')
+        PyMud.multiqueue.MultiQueue.__init__(self,('console', 'control', 'database', 'results'), 'console')
         threading.Thread.__init__(self)
         self.started = False
         if dbfile == "":
@@ -32,7 +32,7 @@ class Database(multiqueue.MultiQueue, threading.Thread):
         """
         Tell the database thread it's time to shutdown
         """
-        self.enqueue('control', "shutdown", newline=False)
+        self.enqueue('control', "shutdown")
 
     def do_shutdown(self):
         """
@@ -46,11 +46,11 @@ class Database(multiqueue.MultiQueue, threading.Thread):
         Find the next (lowest) available dbref in the database
             This is thread-safe
         """
-        self.enqueue('database', Pickle.dumps(('next_dbref', '')))
+        self.enqueue('database', pickle.dumps(('next_dbref', '')))
         # Wait for results
         while self.hasqueued('results') == False:
             time.sleep(0.1)
-        return Pickle.loads(self.get_nowait('results'))
+        return pickle.loads(self.get_nowait('results'))
 
     def write_config(self, name, value):
         """
@@ -59,7 +59,7 @@ class Database(multiqueue.MultiQueue, threading.Thread):
         """
         if not str(name):
             raise ValueError("name must be a valid string: " + str(name))
-        self.enqueue('database', Pickle.dumps(('write_config', (name, value))))
+        self.enqueue('database', pickle.dumps(('write_config', (name, value))))
 
     def read_config(self, name):
         """
@@ -68,29 +68,29 @@ class Database(multiqueue.MultiQueue, threading.Thread):
         """
         if not str(name):
             raise ValueError("name must be a valid string: " + str(name))
-        self.enqueue('database', Pickle.dumps(('read_config', str(name))))
+        self.enqueue('database', pickle.dumps(('read_config', str(name))))
         # Wait for results
         while self.hasqueued('results') == False:
             time.sleep(0.1)
-        return Pickle.loads(self.get_nowait('results'))
+        return pickle.loads(self.get_nowait('results'))
 
     def player_count(self):
         """
         Return a count of the players in the database
           This is thread-safe
         """
-        self.enqueue('database', Pickle.dumps(('player_count', '')))
+        self.enqueue('database', pickle.dumps(('player_count', '')))
         # Wait for results
         while self.hasqueued('results') == False:
             time.sleep(0.1)
-        return Pickle.loads(self.get_nowait('results'))
+        return pickle.loads(self.get_nowait('results'))
 
     def get_player(self, name):
         """
         Read a player from the database
           This is thread-safe
         """
-        self.enqueue('database', Pickle.dumps(('get_player', name)))
+        self.enqueue('database', pickle.dumps(('get_player', name)))
 
     def create_player(self, name, passwd):
         """
@@ -99,7 +99,7 @@ class Database(multiqueue.MultiQueue, threading.Thread):
         """
         # Hash the password
         pwhash = pbkdf2_sha256.encrypt(passwd, rounds=200000, salt_size=16)
-        self.enqueue('database', Pickle.dumps(('create_player',(name, pwhash))))
+        self.enqueue('database', pickle.dumps(('create_player',(name, pwhash))))
 
     def initdb(self):
         """
@@ -112,17 +112,17 @@ class Database(multiqueue.MultiQueue, threading.Thread):
           Only populate tables if empty
         """
         # Everything
-        self.execute("CREATE TABLE IF NOT EXISTS ids (id int UNIQUE, type text)")
+        self._execute("CREATE TABLE IF NOT EXISTS ids (id int UNIQUE, type text)")
         # Config
         dbver = 0.1
-        self.execute("CREATE TABLE IF NOT EXISTS config (name text, value text)")
+        self._execute("CREATE TABLE IF NOT EXISTS config (name text, value text)")
         # Populate minimum default values if needed
         if not self._read_config('DATABASE_VERSION'):
             self.write_config("DATABASE_VERSION", dbver)
         if not self._read_config('MUD_PORT'):
             self.write_config("MUD_PORT", 32767)
         # Rooms
-        self.execute("CREATE TABLE IF NOT EXISTS rooms (id int, name text, color text, desc text)")
+        self._execute("CREATE TABLE IF NOT EXISTS rooms (id int, name text, color text, desc text)")
         # TODO: Get next dbref
         lid = 0
         lname = 'limbo'
@@ -175,7 +175,10 @@ class Database(multiqueue.MultiQueue, threading.Thread):
         """
         res = self._fetchall("SELECT value FROM config WHERE name=\'" + str(name) + "\'")
         # Return the first record [0], first field [0]
-        return res[0][0]
+        if len(res):
+            return res[0][0]
+        else:
+            return None
 
     def _write_config(self, name, value):
         """
@@ -205,7 +208,7 @@ class Database(multiqueue.MultiQueue, threading.Thread):
         pdesc = res['desc']
         pchannel = res['channel']
         pchannels = res['channels'].split(" ")
-        po = object.Player(pid, pname, color=pcolor, desc=pdesc, channel=pchannel, channels=pchannels)
+        po = PyMud.object.Player(pid, pname, color=pcolor, desc=pdesc, channel=pchannel, channels=pchannels)
         return po
 
     def _create_player(self, name, passwd):
@@ -218,8 +221,8 @@ class Database(multiqueue.MultiQueue, threading.Thread):
         pcolor = random.randint(0, 15)
         pdesc = ""
         pchans = ["public"]
-        self.execute("INSERT INTO players VALUES (" + str(pnum) + ",'" + str(name) + "'," + str(pcolor) + ",'" + pchans[0] + "','" + " ".join(pchans) + "')")
-        self.execute("INSERT INTO passwd VALUES (" + str(pnum) + ",'" + passwd + "')")
+        self._execute("INSERT INTO players VALUES (" + str(pnum) + ",'" + str(name) + "'," + str(pcolor) + ",'" + pchans[0] + "','" + " ".join(pchans) + "')")
+        self._execute("INSERT INTO passwd VALUES (" + str(pnum) + ",'" + passwd + "')")
 
     def run(self):
         """
@@ -246,16 +249,16 @@ class Database(multiqueue.MultiQueue, threading.Thread):
                     self.console("WARNING: Unknown control issued to Database: " + str(cmd))
             # Check the database queue
             while self.hasqueued('database'):
-                cmd, val = Pickle.loads(self.get_nowait('database'))
+                cmd, val = pickle.loads(self.get_nowait('database'))
                 if cmd == 'read_config':
-                    self.enqueue('results', Pickle.dumps(self._read_config(val)))
+                    self.enqueue('results', pickle.dumps(self._read_config(val)))
                 elif cmd == 'write_config':
                     name, val = val
                     self._write_config(name, val)
                 elif cmd == 'player_count':
-                    self.enqueue('results', Pickle.dumps(self._player_count()))
+                    self.enqueue('results', pickle.dumps(self._player_count()))
                 elif cmd == 'get_player':
-                    self.enqueue('results', Pickle.dumps(self._get_player(val)))
+                    self.enqueue('results', pickle.dumps(self._get_player(val)))
                 elif cmd == 'create_player':
                     name, val = val
                     self._create_player(name, val)

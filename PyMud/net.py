@@ -2,12 +2,15 @@
 """
     PyMud/net.py - PyMud networking code
 """
-import client, multiqueue, socket, threading, time
+import PyMud.client, PyMud.multiqueue, socket, threading, time
 
-class Network(multiqueue.MultiQueue, threading.Thread):
+class Network(PyMud.multiqueue.MultiQueue, threading.Thread):
     def __init__(self, db, port=32767):
-        multiqueue.MultiQueue.__init__(self,('console', 'control'), 'console')
+        PyMud.multiqueue.MultiQueue.__init__(self,('console', 'control'), 'console')
         threading.Thread.__init__(self)
+        ## Fall back port in case the config doesn't make it into the DB
+        if not port:
+            port = 32767
         self.db = db
         self.port = port
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -20,11 +23,11 @@ class Network(multiqueue.MultiQueue, threading.Thread):
 
     def console(self, msg, newline=True):
         "Enqueue a message for console output"
-        self.enqueue('console', str(msg), newline=newline)
+        self.enqueueString('console', str(msg), newline=newline)
 
     def shutdown(self):
         "Enqueue the shutdown command in the command queue"
-        self.enqueue('control', "shutdown", newline=False)
+        self.enqueue('control', "shutdown")
 
     def run(self):
         """
@@ -52,10 +55,10 @@ class Network(multiqueue.MultiQueue, threading.Thread):
             # Accept sockets
             try:
                 (clientsocket, address) = self.socket.accept()
-                clientthread = client.Client(clientsocket, address, self.db, self.game)
+                clientthread = PyMud.client.Client(clientsocket, address, self.db, self.game)
                 clientthread.start()
                 self.clients.append(clientthread)
-            except socket.error, err:
+            except socket.error as err:
                 # [Errno 11] Resource temporarily unavailable
                 #  That is to say, no error and no connection to accept
                 if err.errno != 11:

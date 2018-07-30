@@ -2,7 +2,7 @@
 """
     PyMud/client.py - PyMud client thread
 """
-import multiqueue, socket, threading, time
+import PyMud.multiqueue, socket, threading, time
 
 telnet = {}
 telnet[240] = 'SE'
@@ -25,9 +25,9 @@ telnet[255] = 'IAC'
 IAC_WONT_ECHO = '\xFF\xFC\x01'
 IAC_WILL_ECHO = '\xFF\xFB\x01'
 
-class Client(multiqueue.MultiQueue, threading.Thread):
+class Client(PyMud.multiqueue.MultiQueue, threading.Thread):
     def __init__(self, socket, address, db, game):
-        multiqueue.MultiQueue.__init__(self,('console', 'control', 'recv', 'send'), 'console')
+        PyMud.multiqueue.MultiQueue.__init__(self,('console', 'control', 'recv', 'send'), 'console')
         threading.Thread.__init__(self)
         self.status = "INIT"
         self.socket = socket
@@ -46,8 +46,8 @@ class Client(multiqueue.MultiQueue, threading.Thread):
               Threads should make use of Client.send(msg, [newline])
         """
         try:
-            self.socket.send(str(msg))
-        except socket.error, e:
+            self.socket.send(str(msg).encode('utf_8'))
+        except socket.error as e:
             if e.errno == 32:
                 self.console("Broken pipe!")
             else:
@@ -60,21 +60,21 @@ class Client(multiqueue.MultiQueue, threading.Thread):
         """
         if prefix:
             msg = "[" + str(self.address) + ":" + str(self.port) + "]: " + str(msg)
-        self.enqueue('console', str(msg), newline=newline)
+        self.enqueueString('console', str(msg), newline=newline)
 
     def shutdown(self):
         """
             Enqueue the shutdown command in the command queue
               This is thread-safe
         """
-        self.enqueue('control', "shutdown", newline=False)
+        self.enqueue('control', "shutdown")
 
     def send(self, msg, newline=True):
         """
             Send a message to the client
               This is thread-safe
         """
-        self.enqueue('send', msg, newline=newline)
+        self.enqueueString('send', msg, newline=newline)
 
     def echoOff(self):
         """
@@ -82,7 +82,7 @@ class Client(multiqueue.MultiQueue, threading.Thread):
                 This is thread safe
         """
         # SERVER says it will echo, so client wont
-        self.enqueue('send', IAC_WILL_ECHO, newline=False)
+        self.enqueueString('send', IAC_WILL_ECHO, newline=False)
 
     def echoOn(self):
         """
@@ -90,7 +90,7 @@ class Client(multiqueue.MultiQueue, threading.Thread):
                 This is thread safe
         """
         # SERVER says it wont echo, so client will
-        self.enqueue('send', IAC_WONT_ECHO, newline=False)
+        self.enqueueString('send', IAC_WONT_ECHO, newline=False)
 
     def run(self):
         """
@@ -112,13 +112,13 @@ class Client(multiqueue.MultiQueue, threading.Thread):
             # Please feel free to email me about discount rates on rubber rooms
             ###
             try:
-                data = self.socket.recv(8192) # 8k
+                data = self.socket.recv(8192).decode('utf_8') # 8k
                 # Don't move this check down below with the if data:
                 #  It breaks down there (always returns no data)
                 if not data:
                     self.console("Socket closed")
                     self.shutdown()
-            except socket.error, e:
+            except socket.error as e:
                 if e.errno == 11:
                     pass
                 else:
