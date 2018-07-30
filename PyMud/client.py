@@ -4,6 +4,27 @@
 """
 import multiqueue, socket, threading, time
 
+telnet = {}
+telnet[240] = 'SE'
+telnet[241] = 'NOP'
+telnet[242] = 'Data Mark'
+telnet[243] = 'Break'
+telnet[244] = 'Interrupt Process'
+telnet[245] = 'Abort output'
+telnet[246] = 'Are You There'
+telnet[247] = 'Erase character'
+telnet[248] = 'Erase Line'
+telnet[249] = 'Go ahead'
+telnet[250] = 'SB'
+telnet[251] = 'WILL (option code)'
+telnet[252] = 'WON\'T (option code)'
+telnet[253] = 'DO (option code)'
+telnet[254] = 'DON\'T (option code)'
+telnet[255] = 'IAC'
+
+IAC_WONT_ECHO = '\xFF\xFC\x01'
+IAC_WILL_ECHO = '\xFF\xFB\x01'
+
 class Client(multiqueue.MultiQueue, threading.Thread):
     def __init__(self, socket, address, db, game):
         multiqueue.MultiQueue.__init__(self,('console', 'control', 'recv', 'send'), 'console')
@@ -55,6 +76,22 @@ class Client(multiqueue.MultiQueue, threading.Thread):
         """
         self.enqueue('send', msg, newline=newline)
 
+    def echoOff(self):
+        """
+            Turn off local-echo
+                This is thread safe
+        """
+        # SERVER says it will echo, so client wont
+        self.enqueue('send', IAC_WILL_ECHO, newline=False)
+
+    def echoOn(self):
+        """
+            Turn on local-echo
+                This is thread safe
+        """
+        # SERVER says it wont echo, so client will
+        self.enqueue('send', IAC_WONT_ECHO, newline=False)
+
     def run(self):
         """
             Client main thread
@@ -87,11 +124,22 @@ class Client(multiqueue.MultiQueue, threading.Thread):
                 else:
                     self.console("Error reading from socket: " + str(e))
             if data:
-                # Lets get rid of the newline characters on the end
-                data = data.rstrip("\r\n")
-                self.enqueue('recv', data)
-                #self.console("DEBUG: Recv: " + str(data))
-                self.game.receive(self, data)
+                # Is it a telnet command?
+                if data[0] == '\xFF': # Doesn't start with IAC
+                    telnet_cmd = ""
+                    for i in range(len(data)):
+                        keyval = int(data[i].encode("hex"),16)
+                        if keyval in telnet:
+                            telnet_cmd += str(telnet[keyval]) + " "
+                        else:
+                            telnet_cmd += "[" + str(keyval) + "] "
+                    self.console("Telnet command received: " + telnet_cmd)
+                else:
+                    # Lets get rid of the newline characters on the end
+                    data = data.rstrip("\r\n")
+                    self.enqueue('recv', data)
+                    #self.console("DEBUG: Recv: " + str(data))
+                    self.game.receive(self, data)
             # Check the control queue for commands
             while self.hasqueued('control'):
                 cmd = self.get_nowait('control')

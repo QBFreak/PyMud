@@ -119,7 +119,9 @@ class Game(multiqueue.MultiQueue, threading.Thread):
                     # Next we need to prompt for a password
                     client.currentPrompt = 'password'
                     self.send(clientnum, "Please select a password: ", newline=False)
+                    client.echoOff()
                 elif client.currentPrompt == 'password':
+                    client.echoOn()
                     # Record the password
                     client.bucketLock.acquire()
                     client.bitBucket['password'] = userInput
