@@ -1,6 +1,10 @@
 #!/usr/bin/python
 """
     pymud.py - PyMud main file
+
+    Requirements:
+        OpenSimplex (some day...)
+        passlib
 """
 import Queue, sys, time
 import PyMud.db, PyMud.net, PyMud.game
