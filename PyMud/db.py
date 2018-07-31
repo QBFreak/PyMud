@@ -26,7 +26,7 @@ class Database(PyMud.multiqueue.MultiQueue, threading.Thread):
 
     def console(self, msg):
         "Enqueue a message for console output"
-        self.enqueue('console', str(msg))
+        self.enqueueString('console', str(msg))
 
     def shutdown(self):
         """

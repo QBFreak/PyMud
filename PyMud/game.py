@@ -69,7 +69,7 @@ class Game(PyMud.multiqueue.MultiQueue, threading.Thread):
               This is thread-safe
         """
         self.clientLock.acquire()
-        cnum = self.clientList.keys()[self.clientList.values().index(client)]
+        cnum = list(self.clientList.keys())[list(self.clientList.values()).index(client)]
         del self.clientList[cnum]
         self.enqueue('client', pickle.dumps(('CLOSED', cnum)))
         self.clientLock.release()
