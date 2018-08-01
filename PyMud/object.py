@@ -62,8 +62,8 @@ class Player(Object):
             self.color = random.randint(0, 15)
         else:
             self.color = color
-        if channel == none:
-            if channels != none and type(channels) == type([]):
+        if channel == None:
+            if channels != None and type(channels) == type([]):
                 channel = channels[0]
             else:
                 channel = "public"
