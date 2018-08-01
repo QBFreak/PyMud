@@ -145,10 +145,11 @@ class Game(PyMud.multiqueue.MultiQueue, threading.Thread):
                 # User input didn't pass validation
                 self.send(clientnum, "Invalid value, please try again.")
 
-    def login(self):
+    def login(self, clientnum):
         "Prompt the connected user to log in as an existing player"
         self.console("login", client=clientnum)
         self.send(clientnum, "LOGIN")
+        # TODO: HA! This is not a login prompt...
 
     def run(self):
         """

@@ -235,7 +235,6 @@ class Database(PyMud.multiqueue.MultiQueue, threading.Thread):
             color = random.randint(0,15)
         if not desc:
             desc = ''
-        # self._execute("INSERT INTO rooms VALUES (" + str(rid) + ", '" + str(name) + "', " + str(color) + ", '" + str(desc) + "')")
         self._execute("INSERT INTO rooms VALUES ({0},'{1}',{2},'{3}')".format(rid, str(name), color, str(desc)))
         self._execute("INSERT INTO ids VALUES ({0},'{1}')".format(rid, 'room'))
 
