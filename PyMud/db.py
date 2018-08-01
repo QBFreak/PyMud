@@ -123,8 +123,8 @@ class Database(PyMud.multiqueue.MultiQueue, threading.Thread):
             self.write_config("MUD_PORT", 32767)
         # Rooms
         self._execute("CREATE TABLE IF NOT EXISTS rooms (id int, name text, color text, desc text)")
-        # TODO: Get next dbref
-        lid = 0
+        # TODO: _create_room()
+        lid = next_dbref()
         lname = 'limbo'
         lcolor = random.randint(0,15)
         ldesc = ''
@@ -138,8 +138,8 @@ class Database(PyMud.multiqueue.MultiQueue, threading.Thread):
         self._execute("CREATE TABLE IF NOT EXISTS zones (id int, name text, color text, desc text)")
         # channels
         self._execute("CREATE TABLE IF NOT EXISTS channels (id int, name text, color text)")
-        # TODO: Get next dbref
-        cid = 0
+        # TODO: _create_channel()
+        cid = next_dbref()
         cname = 'public'
         ccolor = random.randint(0, 15)
         self._execute("INSERT INTO channels VALUES (" + str(cid) + ", '" + cname + "', " + str(ccolor) + ")")
@@ -216,13 +216,13 @@ class Database(PyMud.multiqueue.MultiQueue, threading.Thread):
         Write a new player to the database
           This is only meant to be called by the database thread
         """
-        # TODO: We really need to get the next available database number...
-        pnum = 0
+        pnum = next_dbref()
         pcolor = random.randint(0, 15)
         pdesc = ""
         pchans = ["public"]
         self._execute("INSERT INTO players VALUES (" + str(pnum) + ",'" + str(name) + "'," + str(pcolor) + ",'','" + pchans[0] + "','" + " ".join(pchans) + "')")
-        self._execute("INSERT INTO passwd VALUES (" + str(pnum) + ",'" + passwd + "')")
+        self._execute("INSERT INTO passwd VALUES (" + str(name) + ",'" + passwd + "')")
+        self._execute("INSERT INTO ids VALUES (" + str(pnum) + ",'player')")
 
     def run(self):
         """
