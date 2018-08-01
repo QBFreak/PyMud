@@ -194,7 +194,7 @@ class Database(PyMud.multiqueue.MultiQueue, threading.Thread):
         """
         res = self._fetchall("SELECT COUNT(*) FROM players")
         # Return the first record [0], first field [0]
-        return [0][0]
+        return res[0][0]
 
     def _get_player(self, name):
         """
@@ -221,7 +221,7 @@ class Database(PyMud.multiqueue.MultiQueue, threading.Thread):
         pcolor = random.randint(0, 15)
         pdesc = ""
         pchans = ["public"]
-        self._execute("INSERT INTO players VALUES (" + str(pnum) + ",'" + str(name) + "'," + str(pcolor) + ",'" + pchans[0] + "','" + " ".join(pchans) + "')")
+        self._execute("INSERT INTO players VALUES (" + str(pnum) + ",'" + str(name) + "'," + str(pcolor) + ",'','" + pchans[0] + "','" + " ".join(pchans) + "')")
         self._execute("INSERT INTO passwd VALUES (" + str(pnum) + ",'" + passwd + "')")
 
     def run(self):
