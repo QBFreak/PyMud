@@ -112,7 +112,8 @@ class Client(PyMud.multiqueue.MultiQueue, threading.Thread):
             # Please feel free to email me about discount rates on rubber rooms
             ###
             try:
-                data = self.socket.recv(8192).decode('utf_8') # 8k
+                # TODO: Unicode, ugh
+                data = self.socket.recv(8192).decode('utf_8', "ignore") # 8k
                 # Don't move this check down below with the if data:
                 #  It breaks down there (always returns no data)
                 if not data:
