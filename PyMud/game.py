@@ -145,11 +145,61 @@ class Game(PyMud.multiqueue.MultiQueue, threading.Thread):
                 # User input didn't pass validation
                 self.send(clientnum, "Invalid value, please try again.")
 
-    def login(self, clientnum):
-        "Prompt the connected user to log in as an existing player"
-        self.console("login", client=clientnum)
-        self.send(clientnum, "LOGIN")
-        # TODO: HA! This is not a login prompt...
+    def login(self, clientnum, userInput=None):
+        """
+            Prompt the connected user to log in as an existing player
+             Also handles subsequent input required to complete process
+        """
+        client = self.clientList[clientnum]
+        if userInput == None:
+            # Called for the first time, set it up
+            client.status = "LOGIN"
+            self.console("Player login", client=clientnum)
+            # Back to normal (any) player creation
+            self.send(clientnum, "")
+            self.send(clientnum, "Please enter your player name: ", newline=False)
+            # We're prompting for the username
+            client.currentPrompt = 'username'
+        else:
+            if self.checkInput(client.currentPrompt, userInput, self.newUserPrompts):
+                if client.currentPrompt == 'username':
+                    # Record the username
+                    client.bucketLock.acquire()
+                    client.bitBucket['username'] = userInput
+                    client.bucketLock.release()
+                    # Next we need to prompt for a password
+                    client.currentPrompt = 'password'
+                    self.send(clientnum, "Please enter your password: ", newline=False)
+                    # TODO: Fix escape sequences and Unicode (shoot me now)
+                    # client.echoOff()
+                elif client.currentPrompt == 'password':
+                    # client.echoOn()
+                    # Record the password
+                    client.bucketLock.acquire()
+                    client.bitBucket['password'] = userInput
+                    client.bucketLock.release()
+                    # No more prompts
+                    client.currentPrompt = ''
+                    client.status = "GAME"
+                    # TODO: CHECK FOR VALID LOGIN
+                    self.send(clientnum, "DEBUG: Your username is " + str(client.bitBucket['username']) + ", and your password is " + str(client.bitBucket['password']))
+                    if self.db.verify_user(client.bitBucket['username'], client.bitBucket['password']):
+                        self.send(clientnum, "You have been successfully logged in.")
+                        po = self.db.get_player(client.bitBucket['username'])
+                        self.console(po)
+                    else:
+                        self.send(clientnum, "Login has failed.")
+                    # Lets not keep the unhashed password around any longer than necessary
+                    client.bucketLock.acquire()
+                    del client.bitBucket['password']
+                    client.bucketLock.release()
+                else:
+                    # Blork (they want us to do WHAT now?)
+                    self.send(clientnum, "Error loggin in!")
+                    client.currentPrompt = ""
+            else:
+                # User input didn't pass validation
+                self.send(clientnum, "Invalid value, please try again.")
 
     def run(self):
         """
@@ -189,5 +239,7 @@ class Game(PyMud.multiqueue.MultiQueue, threading.Thread):
                     self.console("RECV: " + str(data), client=cnum)
                     if self.clientList[cnum].status == "NEWPLAYER":
                         self.createPlayer(cnum, data)
+                    elif self.clientList[cnum].status == "LOGIN":
+                        self.login(cnum, data)
                 else:
                     self.console("Game: I don't know what to do with client status " + str(status))

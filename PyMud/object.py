@@ -19,8 +19,8 @@ class Object:
         if color == None:
             self.color = 0
         else:
-            if type(color) != type(int) or color < 0 or color > 15:
-                raise(ValueError("color Must be an integer in the range 0-15"))
+            if type(color) != type(int()) or color < 0 or color > 15:
+                raise(ValueError("color Must be an integer in the range 0-15 [{0}, {1}]".format(type(color), color)))
             self.color = color
         if desc == None:
             self.desc = ""

@@ -91,6 +91,9 @@ class Database(PyMud.multiqueue.MultiQueue, threading.Thread):
           This is thread-safe
         """
         self.enqueue('database', pickle.dumps(('get_player', name)))
+        while self.hasqueued('results') == False:
+            time.sleep(0.1)
+        return pickle.loads(self.get_nowait('results'))
 
     def create_player(self, name, passwd):
         """
@@ -98,7 +101,7 @@ class Database(PyMud.multiqueue.MultiQueue, threading.Thread):
           This is thread-safe
         """
         # Hash the password
-        pwhash = pbkdf2_sha256.encrypt(passwd, rounds=200000, salt_size=16)
+        pwhash = self.hash_password(passwd)
         self.enqueue('database', pickle.dumps(('create_player',(name, pwhash))))
 
     def create_room(self, name, color, desc):
@@ -107,6 +110,15 @@ class Database(PyMud.multiqueue.MultiQueue, threading.Thread):
           This is thread-safe
         """
         self.enqueue('database', pickle.dumps(('create_room',(name, color, desc))))
+
+    def hash_password(self, password):
+        return pbkdf2_sha256.encrypt(password, rounds=200000, salt_size=16)
+
+    def verify_user(self, name, password):
+        self.enqueue('database', pickle.dumps(('verify_user',(name, password))))
+        while self.hasqueued('results') == False:
+            time.sleep(0.1)
+        return pickle.loads(self.get_nowait('results'))
 
     def initdb(self):
         """
@@ -204,14 +216,14 @@ class Database(PyMud.multiqueue.MultiQueue, threading.Thread):
         Read a player from the database, return a Player object
           This is only meant to be called by the database thread
         """
-        res = self.fetchall("SELECT * FROM players WHERE name LIKE \'" + name + "\'")
-        pid = res['id']
-        pname = res['name']
-        pcolor = res['color']
-        pdesc = res['desc']
-        pchannel = res['channel']
-        pchannels = res['channels'].split(" ")
-        po = PyMud.object.Player(pid, pname, color=pcolor, desc=pdesc, channel=pchannel, channels=pchannels)
+        res = self._fetchall("SELECT * FROM players WHERE name LIKE \'{0}\'".format(name))[0]
+        pid = res[0]
+        pname = res[1]
+        pcolor = res[2]
+        pdesc = res[3]
+        pchannel = res[4]
+        pchannels = res[5].split(" ")
+        po = PyMud.object.Player(int(pid), pname, color=int(pcolor), desc=pdesc, channel=pchannel, channels=pchannels)
         return po
 
     def _create_player(self, name, passwd):
@@ -244,6 +256,14 @@ class Database(PyMud.multiqueue.MultiQueue, threading.Thread):
             color = random.randint(0, 15)
         self._execute("INSERT INTO channels VALUES ({0}, '{1}', {2})".format(cid, str(name), color))
         self._execute("INSERT INTO ids VALUES ({0},'{1}')".format(cid, 'channel'))
+
+    def _verify_user(self, name, password):
+        res = self._fetchall("SELECT * FROM passwd WHERE name LIKE '{0}'".format(name))
+        if not len(res[0]):
+            return False
+        if name == res[0][0] and pbkdf2_sha256.verify(password, res[0][1]):
+            return True
+        return False
 
     def run(self):
         """
@@ -288,5 +308,8 @@ class Database(PyMud.multiqueue.MultiQueue, threading.Thread):
                 elif cmd == 'create_room':
                     name, color, desc = val
                     self._create_room(name, color, desc)
+                elif cmd == 'verify_user':
+                    name, password = val
+                    self.enqueue('results', pickle.dumps(self._verify_user(name, password)))
                 else:
                     self.console("WARNING: Unknown 'database' command: " + str(cmd))
