@@ -132,6 +132,11 @@ class Game(PyMud.multiqueue.MultiQueue, threading.Thread):
                     self.send(clientnum, "User creation completed.")
                     client.status = "GAME"
                     self.send(clientnum, "DEBUG: Your username is " + str(client.bitBucket['username']) + ", and your password is " + str(client.bitBucket['password']))
+                    self.db.create_player(str(client.bitBucket['username']), str(client.bitBucket['password']))
+                    # Lets not keep the unhashed password around any longer than necessary
+                    client.bucketLock.acquire()
+                    del client.bitBucket['password']
+                    client.bucketLock.release()
                 else:
                     # Blork (they want us to do WHAT now?)
                     self.send(clientnum, "Error creating new player!")
