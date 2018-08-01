@@ -155,6 +155,7 @@ class Database(PyMud.multiqueue.MultiQueue, threading.Thread):
         Execute a query, wrapper for sqlite3 cursor.execute, followed up with
             a connection.commit
         """
+        print("-- " + str(query))
         self.c.execute(query)
         self.conn.commit()
 
@@ -222,9 +223,9 @@ class Database(PyMud.multiqueue.MultiQueue, threading.Thread):
         pcolor = random.randint(0, 15)
         pdesc = ""
         pchans = ["public"]
-        self._execute("INSERT INTO players VALUES (" + str(pnum) + ",'" + str(name) + "'," + str(pcolor) + ",'','" + pchans[0] + "','" + " ".join(pchans) + "')")
-        self._execute("INSERT INTO passwd VALUES (" + str(name) + ",'" + passwd + "')")
-        self._execute("INSERT INTO ids VALUES (" + str(pnum) + ",'player')")
+        self._execute("INSERT INTO players VALUES ({0},'{1}',{2},'','{3}','{4}')".format(pnum, str(name), str(pcolor), str(pchans[0]), " ".join(pchans)))
+        self._execute("INSERT INTO passwd VALUES ('{0}','{1}')".format(str(name), passwd))
+        self._execute("INSERT INTO ids VALUES ({0},'{1}')".format(pnum, 'player'))
 
     def _create_room(self, name, color, desc):
         rid = self._next_dbref()
@@ -236,14 +237,14 @@ class Database(PyMud.multiqueue.MultiQueue, threading.Thread):
             desc = ''
         # self._execute("INSERT INTO rooms VALUES (" + str(rid) + ", '" + str(name) + "', " + str(color) + ", '" + str(desc) + "')")
         self._execute("INSERT INTO rooms VALUES ({0},'{1}',{2},'{3}')".format(rid, str(name), color, str(desc)))
-        self._execute("INSERT INTO ids VALUES (" + str(rid) + ",'room')")
+        self._execute("INSERT INTO ids VALUES ({0},'{1}')".format(rid, 'room'))
 
     def _create_channel(self, name, color):
         cid = self._next_dbref()
         if not color:
             color = random.randint(0, 15)
-        self._execute("INSERT INTO channels VALUES (" + str(cid) + ", '" + str(name) + "', " + str(color) + ")")
-        self._execute("INSERT INTO ids VALUES (" + str(cid) + ",'channel')")
+        self._execute("INSERT INTO channels VALUES ({0}, '{1}', {2})".format(cid, str(name), color))
+        self._execute("INSERT INTO ids VALUES ({0},'{1}')".format(cid, 'channel'))
 
     def run(self):
         """
