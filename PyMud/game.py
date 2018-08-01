@@ -119,9 +119,10 @@ class Game(PyMud.multiqueue.MultiQueue, threading.Thread):
                     # Next we need to prompt for a password
                     client.currentPrompt = 'password'
                     self.send(clientnum, "Please select a password: ", newline=False)
-                    client.echoOff()
+                    # TODO: Fix escape sequences and Unicode (shoot me now)
+                    # client.echoOff()
                 elif client.currentPrompt == 'password':
-                    client.echoOn()
+                    # client.echoOn()
                     # Record the password
                     client.bucketLock.acquire()
                     client.bitBucket['password'] = userInput
