@@ -2,11 +2,11 @@
 """
     PyMud/game.py - PyMud client thread
 """
-import cPickle as Pickle, multiqueue, threading, time
+import pickle, PyMud.multiqueue, threading, time
 
-class Game(multiqueue.MultiQueue, threading.Thread):
+class Game(PyMud.multiqueue.MultiQueue, threading.Thread):
     def __init__(self, net, db):
-        multiqueue.MultiQueue.__init__(self,('console', 'control', 'client'), 'console')
+        PyMud.multiqueue.MultiQueue.__init__(self,('console', 'control', 'client'), 'console')
         threading.Thread.__init__(self)
         self.db = db
         self.net = net
@@ -40,7 +40,7 @@ class Game(multiqueue.MultiQueue, threading.Thread):
         """
         if not client == None:
             msg = "[" + str(self.clientList[client].address) + ":" + str(self.clientList[client].port) + "]: " + str(msg)
-        self.enqueue('console', str(msg), newline=newline)
+        self.enqueueString('console', str(msg), newline=newline)
 
     def send(self, clientnum, msg, newline=True):
         self.clientList[clientnum].send(msg, newline=newline)
@@ -50,7 +50,7 @@ class Game(multiqueue.MultiQueue, threading.Thread):
             Notify Game that it needs to shutdown
               This is thread-safe
         """
-        self.enqueue('control', "shutdown", newline=False)
+        self.enqueue('control', "shutdown")
 
     def connect(self, client):
         """
@@ -59,7 +59,7 @@ class Game(multiqueue.MultiQueue, threading.Thread):
         """
         self.clientLock.acquire()
         self.clientList[self.clientNum] = client
-        self.enqueue('client', Pickle.dumps(('NEW', self.clientNum)), newline=False)
+        self.enqueue('client', pickle.dumps(('NEW', self.clientNum)))
         self.clientNum += 1
         self.clientLock.release()
 
@@ -69,9 +69,9 @@ class Game(multiqueue.MultiQueue, threading.Thread):
               This is thread-safe
         """
         self.clientLock.acquire()
-        cnum = self.clientList.keys()[self.clientList.values().index(client)]
+        cnum = list(self.clientList.keys())[list(self.clientList.values()).index(client)]
         del self.clientList[cnum]
-        self.enqueue('client', Pickle.dumps(('CLOSED', cnum)), newline=False)
+        self.enqueue('client', pickle.dumps(('CLOSED', cnum)))
         self.clientLock.release()
 
     def receive(self, client, data):
@@ -81,9 +81,9 @@ class Game(multiqueue.MultiQueue, threading.Thread):
         """
         # Use the lock to make sure nothing shifts around on us
         self.clientLock.acquire()
-        cnum = self.clientList.keys()[self.clientList.values().index(client)]
+        cnum = list(self.clientList.keys())[list(self.clientList.values()).index(client)]
         self.clientLock.release()
-        self.enqueue('client', Pickle.dumps(('RECV', (cnum, data))), newline=False)
+        self.enqueue('client', pickle.dumps(('RECV', (cnum, data))))
 
     def createPlayer(self, clientnum, userInput=None, firstUser=False):
         """
@@ -119,7 +119,10 @@ class Game(multiqueue.MultiQueue, threading.Thread):
                     # Next we need to prompt for a password
                     client.currentPrompt = 'password'
                     self.send(clientnum, "Please select a password: ", newline=False)
+                    # TODO: Fix escape sequences and Unicode (shoot me now)
+                    # client.echoOff()
                 elif client.currentPrompt == 'password':
+                    # client.echoOn()
                     # Record the password
                     client.bucketLock.acquire()
                     client.bitBucket['password'] = userInput
@@ -129,6 +132,11 @@ class Game(multiqueue.MultiQueue, threading.Thread):
                     self.send(clientnum, "User creation completed.")
                     client.status = "GAME"
                     self.send(clientnum, "DEBUG: Your username is " + str(client.bitBucket['username']) + ", and your password is " + str(client.bitBucket['password']))
+                    self.db.create_player(str(client.bitBucket['username']), str(client.bitBucket['password']))
+                    # Lets not keep the unhashed password around any longer than necessary
+                    client.bucketLock.acquire()
+                    del client.bitBucket['password']
+                    client.bucketLock.release()
                 else:
                     # Blork (they want us to do WHAT now?)
                     self.send(clientnum, "Error creating new player!")
@@ -137,10 +145,61 @@ class Game(multiqueue.MultiQueue, threading.Thread):
                 # User input didn't pass validation
                 self.send(clientnum, "Invalid value, please try again.")
 
-    def login(self):
-        "Prompt the connected user to log in as an existing player"
-        self.console("login", client=clientnum)
-        self.send(clientnum, "LOGIN")
+    def login(self, clientnum, userInput=None):
+        """
+            Prompt the connected user to log in as an existing player
+             Also handles subsequent input required to complete process
+        """
+        client = self.clientList[clientnum]
+        if userInput == None:
+            # Called for the first time, set it up
+            client.status = "LOGIN"
+            self.console("Player login", client=clientnum)
+            # Back to normal (any) player creation
+            self.send(clientnum, "")
+            self.send(clientnum, "Please enter your player name: ", newline=False)
+            # We're prompting for the username
+            client.currentPrompt = 'username'
+        else:
+            if self.checkInput(client.currentPrompt, userInput, self.newUserPrompts):
+                if client.currentPrompt == 'username':
+                    # Record the username
+                    client.bucketLock.acquire()
+                    client.bitBucket['username'] = userInput
+                    client.bucketLock.release()
+                    # Next we need to prompt for a password
+                    client.currentPrompt = 'password'
+                    self.send(clientnum, "Please enter your password: ", newline=False)
+                    # TODO: Fix escape sequences and Unicode (shoot me now)
+                    # client.echoOff()
+                elif client.currentPrompt == 'password':
+                    # client.echoOn()
+                    # Record the password
+                    client.bucketLock.acquire()
+                    client.bitBucket['password'] = userInput
+                    client.bucketLock.release()
+                    # No more prompts
+                    client.currentPrompt = ''
+                    client.status = "GAME"
+                    # TODO: CHECK FOR VALID LOGIN
+                    self.send(clientnum, "DEBUG: Your username is " + str(client.bitBucket['username']) + ", and your password is " + str(client.bitBucket['password']))
+                    if self.db.verify_user(client.bitBucket['username'], client.bitBucket['password']):
+                        self.send(clientnum, "You have been successfully logged in.")
+                        po = self.db.get_player(client.bitBucket['username'])
+                        self.console(po)
+                    else:
+                        self.send(clientnum, "Login has failed.")
+                    # Lets not keep the unhashed password around any longer than necessary
+                    client.bucketLock.acquire()
+                    del client.bitBucket['password']
+                    client.bucketLock.release()
+                else:
+                    # Blork (they want us to do WHAT now?)
+                    self.send(clientnum, "Error loggin in!")
+                    client.currentPrompt = ""
+            else:
+                # User input didn't pass validation
+                self.send(clientnum, "Invalid value, please try again.")
 
     def run(self):
         """
@@ -162,8 +221,8 @@ class Game(multiqueue.MultiQueue, threading.Thread):
                     self.console("WARNING: Unknown control issued to Game: " + str(cmd))
             # Check the client queue for new clients
             while self.hasqueued('client'):
-                ## the queue contains Pickled ('STATUS', param[, optional params, ...])
-                status, params = Pickle.loads(self.get_nowait('client'))
+                ## the queue contains pickled ('STATUS', param[, optional params, ...])
+                status, params = pickle.loads(self.get_nowait('client'))
                 if status == "NEW":
                     self.console("Client " + str(params) + " connected to game", client=params)
                     pc = self.db.player_count()
@@ -180,5 +239,7 @@ class Game(multiqueue.MultiQueue, threading.Thread):
                     self.console("RECV: " + str(data), client=cnum)
                     if self.clientList[cnum].status == "NEWPLAYER":
                         self.createPlayer(cnum, data)
+                    elif self.clientList[cnum].status == "LOGIN":
+                        self.login(cnum, data)
                 else:
                     self.console("Game: I don't know what to do with client status " + str(status))
