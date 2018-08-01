@@ -101,6 +101,13 @@ class Database(PyMud.multiqueue.MultiQueue, threading.Thread):
         pwhash = pbkdf2_sha256.encrypt(passwd, rounds=200000, salt_size=16)
         self.enqueue('database', pickle.dumps(('create_player',(name, pwhash))))
 
+    def create_room(self, name, color, desc):
+        """
+        Write a new room to the Database
+          This is thread-safe
+        """
+        self.enqueue('database', pickle.dumps(('create_room',(name, color, desc))))
+
     def initdb(self):
         """
         Initialize the database with default values
@@ -123,12 +130,7 @@ class Database(PyMud.multiqueue.MultiQueue, threading.Thread):
             self.write_config("MUD_PORT", 32767)
         # Rooms
         self._execute("CREATE TABLE IF NOT EXISTS rooms (id int, name text, color text, desc text)")
-        # TODO: _create_room()
-        lid = next_dbref()
-        lname = 'limbo'
-        lcolor = random.randint(0,15)
-        ldesc = ''
-        self._execute("INSERT INTO rooms VALUES (" + str(lid) + ", '" + lname + "', " + str(lcolor) + ", '" + ldesc + "')")
+        self._create_room('limbo', random.randint(0,15), '')
         # Players
         self._execute("CREATE TABLE IF NOT EXISTS players (id int, name text, color text, desc text, channel text, channels text)")
         self._execute("CREATE TABLE IF NOT EXISTS passwd (name text, password text)")
@@ -138,11 +140,7 @@ class Database(PyMud.multiqueue.MultiQueue, threading.Thread):
         self._execute("CREATE TABLE IF NOT EXISTS zones (id int, name text, color text, desc text)")
         # channels
         self._execute("CREATE TABLE IF NOT EXISTS channels (id int, name text, color text)")
-        # TODO: _create_channel()
-        cid = next_dbref()
-        cname = 'public'
-        ccolor = random.randint(0, 15)
-        self._execute("INSERT INTO channels VALUES (" + str(cid) + ", '" + cname + "', " + str(ccolor) + ")")
+        self._create_channel('public', random.randint(0, 15))
         return dbver
 
     def _fetchall(self, query):
@@ -166,7 +164,11 @@ class Database(PyMud.multiqueue.MultiQueue, threading.Thread):
             This is only meant to be called by the database threads
         """
         self.c.execute("SELECT min(id)+1 FROM ids WHERE id+1 NOT IN (SELECT id FROM ids)")
-        return self.c.fetchall()
+        res = self.c.fetchall()[0][0]
+        if not res:
+            return 0
+        else:
+            return res
 
     def _read_config(self, name):
         """
@@ -216,13 +218,32 @@ class Database(PyMud.multiqueue.MultiQueue, threading.Thread):
         Write a new player to the database
           This is only meant to be called by the database thread
         """
-        pnum = next_dbref()
+        pnum = self._next_dbref()
         pcolor = random.randint(0, 15)
         pdesc = ""
         pchans = ["public"]
         self._execute("INSERT INTO players VALUES (" + str(pnum) + ",'" + str(name) + "'," + str(pcolor) + ",'','" + pchans[0] + "','" + " ".join(pchans) + "')")
         self._execute("INSERT INTO passwd VALUES (" + str(name) + ",'" + passwd + "')")
         self._execute("INSERT INTO ids VALUES (" + str(pnum) + ",'player')")
+
+    def _create_room(self, name, color, desc):
+        rid = self._next_dbref()
+        if not name:
+            name = 'Room'
+        if not color:
+            color = random.randint(0,15)
+        if not desc:
+            desc = ''
+        # self._execute("INSERT INTO rooms VALUES (" + str(rid) + ", '" + str(name) + "', " + str(color) + ", '" + str(desc) + "')")
+        self._execute("INSERT INTO rooms VALUES ({0},'{1}',{2},'{3}')".format(rid, str(name), color, str(desc)))
+        self._execute("INSERT INTO ids VALUES (" + str(rid) + ",'room')")
+
+    def _create_channel(self, name, color):
+        cid = self._next_dbref()
+        if not color:
+            color = random.randint(0, 15)
+        self._execute("INSERT INTO channels VALUES (" + str(cid) + ", '" + str(name) + "', " + str(color) + ")")
+        self._execute("INSERT INTO ids VALUES (" + str(cid) + ",'channel')")
 
     def run(self):
         """
@@ -255,6 +276,8 @@ class Database(PyMud.multiqueue.MultiQueue, threading.Thread):
                 elif cmd == 'write_config':
                     name, val = val
                     self._write_config(name, val)
+                elif cmd == 'next_dbref':
+                    self.enqueue('results', pickle.dumps(self._next_dbref()))
                 elif cmd == 'player_count':
                     self.enqueue('results', pickle.dumps(self._player_count()))
                 elif cmd == 'get_player':
@@ -262,5 +285,8 @@ class Database(PyMud.multiqueue.MultiQueue, threading.Thread):
                 elif cmd == 'create_player':
                     name, val = val
                     self._create_player(name, val)
+                elif cmd == 'create_room':
+                    name, color, desc = val
+                    self._create_room(name, color, desc)
                 else:
                     self.console("WARNING: Unknown 'database' command: " + str(cmd))
